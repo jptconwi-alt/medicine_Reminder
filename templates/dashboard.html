@@ -4,9 +4,12 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>Your Medicine Schedule</h2>
-    <a href="{{ url_for('add_medicine') }}" class="btn btn-success">
-        + Add Medicine
-    </a>
+    <div>
+        <button id="testEmailBtn" class="btn btn-info me-2">Test Email</button>
+        <a href="{{ url_for('add_medicine') }}" class="btn btn-success">
+            + Add Medicine
+        </a>
+    </div>
 </div>
 
 <div class="row">
@@ -55,10 +58,49 @@
         </div>
     {% endif %}
 </div>
+
+<!-- Client-side Email Test Modal -->
+<div class="modal fade" id="emailTestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Test Email Notification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will send a test email to: <strong>{{ current_user.email }}</strong></p>
+                <div class="mb-3">
+                    <label class="form-label">Test Medicine Name</label>
+                    <input type="text" class="form-control" id="testMedicineName" value="Test Medicine">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Test Dosage</label>
+                    <input type="text" class="form-control" id="testDosage" value="1 tablet">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="sendTestEmailBtn">Send Test Email</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<!-- Load EmailJS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
 <script>
+// Initialize EmailJS with your User ID
+(function() {
+    // You can set this from Flask template or keep it in JavaScript
+    const emailjsUserId = "{{ config.get('EMAILJS_USER_ID', '') }}";
+    if (emailjsUserId) {
+        emailjs.init(emailjsUserId);
+    }
+})();
+
 document.addEventListener('DOMContentLoaded', function() {
     // Update status
     document.querySelectorAll('.status-btn').forEach(btn => {
@@ -96,6 +138,48 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+    
+    // Test Email Button
+    document.getElementById('testEmailBtn').addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('emailTestModal'));
+        modal.show();
+    });
+    
+    // Send Test Email
+    document.getElementById('sendTestEmailBtn').addEventListener('click', function() {
+        const serviceId = "YOUR_SERVICE_ID"; // Replace with your EmailJS Service ID
+        const templateId = "YOUR_TEMPLATE_ID"; // Replace with your EmailJS Template ID
+        
+        const templateParams = {
+            to_email: "{{ current_user.email }}",
+            medicine_name: document.getElementById('testMedicineName').value,
+            dosage: document.getElementById('testDosage').value,
+            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            to_name: "{{ current_user.email.split('@')[0] }}"
+        };
+        
+        // Send email using EmailJS
+        emailjs.send(serviceId, templateId, templateParams)
+            .then(function(response) {
+                alert('Test email sent successfully!');
+                bootstrap.Modal.getInstance(document.getElementById('emailTestModal')).hide();
+            }, function(error) {
+                alert('Failed to send test email: ' + JSON.stringify(error));
+            });
+    });
+    
+    // Client-side reminder check (optional backup)
+    function checkClientReminders() {
+        const now = new Date();
+        const currentTime = now.getHours() * 60 + now.getMinutes();
+        const currentDay = now.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        // This would check medicines stored in localStorage or make an API call
+        console.log('Client reminder check at:', now.toLocaleTimeString());
+    }
+    
+    // Check every minute
+    setInterval(checkClientReminders, 60000);
 });
 </script>
 {% endblock %}

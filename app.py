@@ -10,9 +10,6 @@ from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import atexit
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Load environment variables
 load_dotenv()
@@ -23,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Email configuration for Gmail - SIMPLIFIED
+# Email configuration for Gmail - FIXED
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')  # Your Gmail
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')  # App password
-app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'jpconwi2005@gmail.com')  # FIXED
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'dyrsdontrrvkauor')  # Your app password
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'jpconwi2005@gmail.com')  # FIXED
 
 # Initialize Flask-Mail
 mail = Mail(app)
@@ -69,7 +66,7 @@ class Medicine(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     dosage = db.Column(db.String(50))
-    time = db.Column(db.Time, nullable=False)  # Stored as PHILIPPINE TIME
+    time = db.Column(db.Time, nullable=False)  # Stored as Philippine Time
     days = db.Column(db.String(100))
     status = db.Column(db.String(20), default='pending')
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
@@ -85,14 +82,19 @@ def init_db():
         try:
             db.create_all()
             logger.info("✅ Database tables checked/created")
+            
+            # Debug: Log environment variables (without password)
+            logger.info(f"📧 Email configured for: {app.config['MAIL_USERNAME']}")
+            logger.info(f"📧 Mail server: {app.config['MAIL_SERVER']}:{app.config['MAIL_PORT']}")
+            
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
 
 init_db()
 
-# SIMPLIFIED Email function
-def send_email_simple(user_email, medicine_name, dosage, time_str):
-    """Simplified email sending function"""
+# Email notification function
+def send_email_notification(user_email, medicine_name, dosage, time_str):
+    """Send email notification using Gmail SMTP"""
     try:
         # Get current PH time
         now_utc = datetime.utcnow()
@@ -101,21 +103,34 @@ def send_email_simple(user_email, medicine_name, dosage, time_str):
         
         subject = f"💊 Medicine Reminder: {medicine_name}"
         
-        # Simple HTML email
-        html = f"""
+        html_body = f"""
         <html>
-        <body>
-            <h2>Medicine Reminder</h2>
-            <p>It's time to take your medicine!</p>
-            <div style="background: #f0f0f0; padding: 15px; border-radius: 5px;">
-                <h3>{medicine_name}</h3>
-                <p><strong>Dosage:</strong> {dosage or 'As prescribed'}</p>
-                <p><strong>Time:</strong> {time_str}</p>
-                <p><strong>Day:</strong> {current_day}</p>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                <div style="background: linear-gradient(to right, #4b6cb7, #182848); padding: 20px; border-radius: 10px 10px 0 0; color: white; text-align: center;">
+                    <h1 style="margin: 0;">💊 Medicine Reminder</h1>
+                </div>
+                
+                <div style="padding: 30px;">
+                    <h2>Time to take your medicine!</h2>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4b6cb7;">
+                        <h3 style="margin-top: 0; color: #2c3e50;">{medicine_name}</h3>
+                        <p><strong>Dosage:</strong> {dosage or 'As prescribed'}</p>
+                        <p><strong>Time:</strong> {time_str} (Philippine Time)</p>
+                        <p><strong>Day:</strong> {current_day}</p>
+                    </div>
+                    
+                    <p>Please don't forget to take your medicine on time. Your health is important!</p>
+                    
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+                        <p style="color: #666; font-size: 14px;">
+                            This is an automated reminder from your Medicine Reminder app.<br>
+                            You can manage your reminders at <a href="https://medicine-reminder-85qu.onrender.com">Medicine Reminder App</a>
+                        </p>
+                    </div>
+                </div>
             </div>
-            <p>Please take your medicine as prescribed.</p>
-            <hr>
-            <p><small>Sent from Medicine Reminder App</small></p>
         </body>
         </html>
         """
@@ -123,37 +138,35 @@ def send_email_simple(user_email, medicine_name, dosage, time_str):
         msg = Message(
             subject=subject,
             recipients=[user_email],
-            html=html,
+            html=html_body,
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
         
-        # Send with timeout
         mail.send(msg)
-        logger.info(f"✅ Email sent to {user_email}")
+        logger.info(f"✅ Email sent successfully to {user_email}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Email error: {e}")
+        logger.error(f"❌ Failed to send email to {user_email}: {e}")
         return False
 
-# SIMPLIFIED Check reminders function
+# Check reminders function - SIMPLE AND RELIABLE
 def check_due_medicines():
+    """Check for medicines due in the next 2 minutes"""
     with app.app_context():
         try:
-            # Get current PH time
+            # Get current time in UTC
             now_utc = datetime.utcnow()
-            now_ph = now_utc + timedelta(hours=8)
-            current_time_ph = now_ph.time()
-            current_day_ph = now_ph.strftime('%a')  # 'Sun', 'Mon', etc.
             
-            # Get the current hour and minute
+            # Convert to Philippine Time (UTC+8)
+            now_ph = now_utc + timedelta(hours=8)
             current_hour = now_ph.hour
             current_minute = now_ph.minute
+            current_day_ph = now_ph.strftime('%a')  # 'Sun', 'Mon', etc.
             
-            logger.info(f"🔍 Checking medicines for {current_day_ph} at {current_time_ph}")
+            logger.info(f"🔍 Checking medicines for {current_day_ph} at {current_hour:02d}:{current_minute:02d} PH Time")
             
-            # Find medicines due at this exact time (within 2 minutes window)
-            # Medicines are stored as PH Time
+            # Find medicines due at this exact minute
             medicines = Medicine.query.filter(
                 db.extract('hour', Medicine.time) == current_hour,
                 db.extract('minute', Medicine.time) == current_minute,
@@ -161,30 +174,16 @@ def check_due_medicines():
                 Medicine.status == 'pending'
             ).all()
             
-            # Also check for medicines in the next minute
-            next_minute = (now_ph + timedelta(minutes=1)).time()
-            next_hour = next_minute.hour
-            next_min = next_minute.minute
-            
-            medicines_next = Medicine.query.filter(
-                db.extract('hour', Medicine.time) == next_hour,
-                db.extract('minute', Medicine.time) == next_min,
-                Medicine.days.like(f'%{current_day_ph}%'),
-                Medicine.status == 'pending'
-            ).all()
-            
-            medicines = medicines + medicines_next
-            
-            logger.info(f"📋 Found {len(medicines)} medicines due now or in 1 minute")
+            logger.info(f"📋 Found {len(medicines)} medicines due now")
             
             for medicine in medicines:
                 # Check if not notified in last 30 minutes
                 if (medicine.last_notified is None or 
                     (now_utc - medicine.last_notified) > timedelta(minutes=30)):
                     
-                    logger.info(f"📤 Sending reminder for '{medicine.name}'")
+                    logger.info(f"📤 Sending reminder for '{medicine.name}' to {medicine.user.email}")
                     
-                    success = send_email_simple(
+                    success = send_email_notification(
                         medicine.user.email,
                         medicine.name,
                         medicine.dosage or "As prescribed",
@@ -195,6 +194,8 @@ def check_due_medicines():
                         medicine.last_notified = now_utc
                         db.session.commit()
                         logger.info(f"✅ Reminder sent for '{medicine.name}'")
+                    else:
+                        logger.error(f"❌ Failed to send reminder for '{medicine.name}'")
                         
         except Exception as e:
             logger.error(f"❌ Error in check_due_medicines: {e}")
@@ -322,7 +323,6 @@ def add_medicine():
             
             days_str = ','.join(days)
             
-            # Store as Philippine Time (NO conversion)
             medicine = Medicine(
                 name=name,
                 dosage=dosage,
@@ -334,7 +334,7 @@ def add_medicine():
             db.session.add(medicine)
             db.session.commit()
             
-            flash(f'Medicine "{name}" added for {time_obj.strftime("%I:%M %p")} Philippine Time!')
+            flash(f'✅ Medicine "{name}" added for {time_obj.strftime("%I:%M %p")} Philippine Time!')
             return redirect(url_for('dashboard'))
             
         except Exception as e:
@@ -388,23 +388,60 @@ def delete_medicine(medicine_id):
 @app.route('/test_email')
 @login_required
 def test_email():
-    """Quick test email"""
+    """Test email functionality"""
     try:
+        # Simple test email
         msg = Message(
-            subject='Test from Medicine Reminder',
+            subject='✅ Test Email from Medicine Reminder',
             recipients=[current_user.email],
-            body='This is a test email from your Medicine Reminder app.',
+            body=f'This is a test email sent at {datetime.utcnow().strftime("%H:%M:%S")} UTC.\n\nIf you received this, email notifications are working!',
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
         
         mail.send(msg)
-        flash('Test email sent! Check your inbox.')
-        return redirect(url_for('dashboard'))
+        flash('✅ Test email sent! Check your inbox (and spam folder).')
+        logger.info(f"✅ Test email sent to {current_user.email}")
         
     except Exception as e:
-        logger.error(f"Test email error: {e}")
-        flash(f'Error: {str(e)}')
-        return redirect(url_for('dashboard'))
+        logger.error(f"❌ Test email error: {e}")
+        flash(f'❌ Error sending test email: {str(e)}')
+    
+    return redirect(url_for('dashboard'))
+
+@app.route('/debug_info')
+@login_required
+def debug_info():
+    """Debug page to check system status"""
+    medicines = Medicine.query.filter_by(user_id=current_user.id).all()
+    
+    debug_info = []
+    for medicine in medicines:
+        debug_info.append({
+            'name': medicine.name,
+            'time': medicine.time.strftime('%H:%M:%S'),
+            'display_time': medicine.time.strftime('%I:%M %p'),
+            'days': medicine.days,
+            'status': medicine.status,
+            'last_notified': medicine.last_notified.strftime('%H:%M:%S') if medicine.last_notified else 'Never'
+        })
+    
+    # Current time info
+    now_utc = datetime.utcnow()
+    now_ph = now_utc + timedelta(hours=8)
+    
+    return jsonify({
+        'user_email': current_user.email,
+        'current_utc': now_utc.strftime('%H:%M:%S'),
+        'current_ph': now_ph.strftime('%I:%M %p'),
+        'ph_day': now_ph.strftime('%a'),
+        'medicines': debug_info,
+        'email_config': {
+            'server': app.config['MAIL_SERVER'],
+            'port': app.config['MAIL_PORT'],
+            'username': app.config['MAIL_USERNAME'],
+            'sender': app.config['MAIL_DEFAULT_SENDER']
+        }
+    })
 
 @app.route('/logout')
 @login_required
@@ -418,14 +455,18 @@ def health_check():
     """Health check for Render"""
     try:
         db.session.execute('SELECT 1')
-        return jsonify({'status': 'healthy'}), 200
-    except:
-        return jsonify({'status': 'unhealthy'}), 500
+        return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}), 200
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 # Initialize scheduler
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_due_medicines, trigger='interval', minutes=1)
+# Check every minute at :00 seconds
+scheduler.add_job(func=check_due_medicines, trigger='interval', minutes=1, id='check_medicines')
 scheduler.start()
+logger.info("✅ Scheduler started - checking medicines every minute")
+
+# Shutdown scheduler on exit
 atexit.register(lambda: scheduler.shutdown())
 
 if __name__ == '__main__':

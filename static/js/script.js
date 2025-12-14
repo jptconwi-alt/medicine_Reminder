@@ -18,3 +18,5 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial check
     checkCurrentTime();
 });
+
+console.log('Medicine Reminder App loaded');

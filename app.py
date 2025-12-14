@@ -156,7 +156,15 @@ def check_due_medicines():
         try:
             now = datetime.now()
             current_time = now.time()
-            current_day = now.strftime('%a')  # Changed to abbreviation (e.g., 'Sun')
+            current_day = now.strftime('%a')  # Abbreviated day
+            
+            logger.info(f"Checking due medicines for {current_day} at {current_time}")
+            
+            # Get all medicines for debugging
+            all_medicines = Medicine.query.all()
+            logger.info(f"Total medicines in DB: {len(all_medicines)}")
+            for med in all_medicines:
+                logger.info(f"Medicine: {med.name}, Time: {med.time}, Days: {med.days}, Status: {med.status}")
             
             # Get medicines due in the next 5 minutes
             five_minutes_later = (datetime.combine(now.date(), current_time) + timedelta(minutes=5)).time()

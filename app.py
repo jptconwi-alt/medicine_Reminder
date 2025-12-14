@@ -6,12 +6,10 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
-from flask_mail import Mail, Message  # Add Flask-Mail
+from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import atexit
 import logging
-from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Email configuration
+# Email configuration for Gmail
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -93,15 +91,17 @@ def init_db():
 # Initialize database
 init_db()
 
-# Email notification function using Flask-Mail
+# Email notification function using Flask-Mail (Gmail)
 def send_email_notification(user_email, medicine_name, dosage, time_str):
     """Send email notification using Gmail SMTP"""
     try:
         # Create email message
         subject = f"⏰ Medicine Reminder: {medicine_name}"
         
-        # Get current day
-        current_day = datetime.now().strftime('%A')
+        # Get current day in Philippine Time
+        now_utc = datetime.utcnow()
+        now_ph = now_utc + timedelta(hours=8)
+        current_day = now_ph.strftime('%A')
         
         html_body = f"""
         <html>
@@ -151,57 +151,55 @@ def send_email_notification(user_email, medicine_name, dosage, time_str):
         logger.error(f"❌ Failed to send email to {user_email}: {e}")
         return False
 
-# Check reminders function
-# Check reminders function (Philippine Time UTC+8)
-# Update the check_due_medicines function:
+# Check reminders function - Fixed for Philippine Time (UTC+8)
 def check_due_medicines():
     with app.app_context():
         try:
             # Get current UTC time
             now_utc = datetime.utcnow()
             
-            # Convert to Philippine Time (UTC+8) for day checking
+            # Convert to Philippine Time (UTC+8)
             now_ph = now_utc + timedelta(hours=8)
+            current_time_ph = now_ph.time()
             current_day_ph = now_ph.strftime('%a')  # e.g., 'Sun', 'Mon'
             
-            # For time comparison, we need to convert current PH time BACK to UTC
-            # because medicines are stored as UTC
-            current_time_ph = now_ph.time()
+            logger.info(f"🔍 Checking due medicines for {current_day_ph} at {current_time_ph} (PH Time)")
             
-            # Convert current PH time to equivalent UTC for database comparison
-            # (since medicines are stored as UTC)
-            current_time_ph_dt = datetime.combine(datetime.today(), current_time_ph)
-            current_time_utc_for_compare = (current_time_ph_dt - timedelta(hours=8)).time()
+            # Calculate time window: current time to 5 minutes later in PH Time
+            five_minutes_later_ph = (datetime.combine(now_ph.date(), current_time_ph) + timedelta(minutes=5)).time()
             
-            # 5 minutes later in PH Time, converted to UTC
-            five_minutes_later_ph_dt = now_ph + timedelta(minutes=5)
-            five_minutes_later_ph = five_minutes_later_ph_dt.time()
-            five_minutes_later_ph_as_dt = datetime.combine(datetime.today(), five_minutes_later_ph)
-            five_minutes_later_utc = (five_minutes_later_ph_as_dt - timedelta(hours=8)).time()
+            # Convert PH time window to UTC for database comparison
+            # Medicines are stored as UTC, so we need to subtract 8 hours
+            current_time_ph_dt = datetime.combine(now_ph.date(), current_time_ph)
+            current_time_utc = (current_time_ph_dt - timedelta(hours=8)).time()
             
-            logger.info(f"Checking due medicines for {current_day_ph} at {current_time_ph} (PH Time)")
-            logger.info(f"Looking for medicines between {current_time_utc_for_compare} and {five_minutes_later_utc} (UTC in DB)")
+            five_minutes_later_ph_dt = datetime.combine(now_ph.date(), five_minutes_later_ph)
+            five_minutes_later_utc = (five_minutes_later_ph_dt - timedelta(hours=8)).time()
             
-            # Query medicines stored as UTC that match the current PH time window
+            logger.info(f"🕒 Time window in PH: {current_time_ph} to {five_minutes_later_ph}")
+            logger.info(f"🕒 Time window in UTC (DB): {current_time_utc} to {five_minutes_later_utc}")
+            
+            # Find medicines due in the next 5 minutes
             medicines = Medicine.query.filter(
-                Medicine.time.between(current_time_utc_for_compare, five_minutes_later_utc),
+                Medicine.time.between(current_time_utc, five_minutes_later_utc),
                 Medicine.days.like(f'%{current_day_ph}%'),
                 Medicine.status == 'pending'
             ).all()
             
-            logger.info(f"Found {len(medicines)} medicines due in PH Time")
+            logger.info(f"📋 Found {len(medicines)} medicines due in PH Time")
             
             for medicine in medicines:
-                # Only send if not notified in the last hour
+                # Check if we haven't notified in the last hour
                 if (medicine.last_notified is None or 
                     (now_utc - medicine.last_notified) > timedelta(hours=1)):
                     
-                    logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
-                    
-                    # Convert stored UTC time to PH Time for email display
+                    # Convert stored UTC time to PH Time for display
                     medicine_time_utc = medicine.time
-                    medicine_time_ph_dt = datetime.combine(datetime.today(), medicine_time_utc) + timedelta(hours=8)
+                    medicine_time_ph_dt = datetime.combine(datetime.utcnow().date(), medicine_time_utc) + timedelta(hours=8)
                     medicine_time_ph = medicine_time_ph_dt.time()
+                    
+                    logger.info(f"📤 Sending reminder for '{medicine.name}' to {medicine.user.email}")
+                    logger.info(f"   Stored UTC: {medicine_time_utc}, Display PH: {medicine_time_ph.strftime('%I:%M %p')}")
                     
                     success = send_email_notification(
                         medicine.user.email,
@@ -214,11 +212,13 @@ def check_due_medicines():
                         medicine.last_notified = now_utc
                         db.session.commit()
                         logger.info(f"✅ Reminder sent for '{medicine.name}'")
+                    else:
+                        logger.error(f"❌ Failed to send reminder for '{medicine.name}'")
                         
         except Exception as e:
             logger.error(f"❌ Error checking reminders: {e}")
 
-# Routes (keep your existing routes as they are)
+# Routes
 @app.route('/')
 def home():
     if current_user.is_authenticated:
@@ -302,23 +302,29 @@ def dashboard():
         # Convert each medicine's time to Philippine Time for display
         for medicine in medicines:
             # Medicine.time is stored as UTC
-            utc_datetime = datetime.combine(datetime.today(), medicine.time)
+            utc_datetime = datetime.combine(datetime.utcnow().date(), medicine.time)
             ph_datetime = utc_datetime + timedelta(hours=8)
             medicine.display_time = ph_datetime.time().strftime('%I:%M %p')
-            
-            # Also store the original time for comparison
-            medicine.time_str = medicine.time.strftime('%H:%M')
+            medicine.stored_utc_time = medicine.time.strftime('%H:%M:%S')
 
         # Group medicines by status
         pending_medicines = [m for m in medicines if m.status == 'pending']
         taken_medicines = [m for m in medicines if m.status == 'taken']
         missed_medicines = [m for m in medicines if m.status == 'missed']
+        
+        # Get current PH time for display
+        now_utc = datetime.utcnow()
+        now_ph = now_utc + timedelta(hours=8)
+        current_ph_time = now_ph.strftime('%I:%M %p')
+        current_ph_day = now_ph.strftime('%A')
 
         return render_template('dashboard.html', 
                              medicines=medicines,
                              pending_medicines=pending_medicines,
                              taken_medicines=taken_medicines,
-                             missed_medicines=missed_medicines)
+                             missed_medicines=missed_medicines,
+                             current_ph_time=current_ph_time,
+                             current_ph_day=current_ph_day)
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
         flash('An error occurred while loading dashboard')
@@ -345,7 +351,7 @@ def add_medicine():
             time_ph = datetime.strptime(time_str, '%H:%M').time()
             
             # Convert to UTC for storage (subtract 8 hours)
-            time_ph_dt = datetime.combine(datetime.today(), time_ph)
+            time_ph_dt = datetime.combine(datetime.utcnow().date(), time_ph)
             time_utc_dt = time_ph_dt - timedelta(hours=8)
             time_utc = time_utc_dt.time()
             
@@ -362,11 +368,13 @@ def add_medicine():
             db.session.add(medicine)
             db.session.commit()
             
-            flash('Medicine added successfully!')
+            # Convert back to PH time for success message
+            display_time_ph = (datetime.combine(datetime.utcnow().date(), time_utc) + timedelta(hours=8)).time().strftime('%I:%M %p')
+            flash(f'Medicine "{name}" added successfully for {display_time_ph} Philippine Time!')
             return redirect(url_for('dashboard'))
             
         except ValueError:
-            flash('Invalid time format. Please use HH:MM format')
+            flash('Invalid time format. Please use HH:MM format (24-hour)')
             return render_template('add_medicine.html', days=days_of_week)
         except Exception as e:
             db.session.rollback()
@@ -466,42 +474,34 @@ def test_email():
         flash(f'Error sending test email: {str(e)}')
         return redirect(url_for('dashboard'))
 
-
-@app.route('/fix_medicine_times')
+@app.route('/debug_times')
 @login_required
-def fix_medicine_times():
-    """Fix existing medicine times - Convert from incorrect UTC to correct PH Time"""
-    try:
-        # List of your current medicines and what they should be
-        medicines_to_fix = [
-            {"current_utc": "19:28:00", "correct_ph": "19:28:00"},  # 7:28 PM PH Time
-            {"current_utc": "19:42:00", "correct_ph": "19:42:00"},  # 7:42 PM PH Time
-            {"current_utc": "20:00:00", "correct_ph": "20:00:00"},  # 8:00 PM PH Time
-            {"current_utc": "20:08:00", "correct_ph": "20:08:00"},  # 8:08 PM PH Time
-        ]
+def debug_times():
+    """Debug page to see all medicine times in different timezones"""
+    medicines = Medicine.query.filter_by(user_id=current_user.id).all()
+    
+    debug_info = []
+    for medicine in medicines:
+        # Convert stored UTC to PH Time
+        utc_time = medicine.time
+        ph_time_dt = datetime.combine(datetime.utcnow().date(), utc_time) + timedelta(hours=8)
+        ph_time = ph_time_dt.time()
         
-        for fix in medicines_to_fix:
-            # Convert correct PH Time to UTC for storage
-            ph_time = datetime.strptime(fix["correct_ph"], '%H:%M:%S').time()
-            ph_dt = datetime.combine(datetime.today(), ph_time)
-            utc_dt = ph_dt - timedelta(hours=8)
-            utc_time = utc_dt.time()
-            
-            # Find and update medicine
-            medicine = Medicine.query.filter_by(time=datetime.strptime(fix["current_utc"], '%H:%M:%S').time()).first()
-            if medicine:
-                medicine.time = utc_time
-                logger.info(f"Updated {medicine.name} from {fix['current_utc']} to {utc_time} (stored as UTC)")
-        
-        db.session.commit()
-        flash('✅ Medicine times fixed! They are now set for 7:28 PM, 7:42 PM, 8:00 PM, 8:08 PM Philippine Time')
-        return redirect(url_for('dashboard'))
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error fixing medicine times: {e}")
-        flash('Error fixing medicine times')
-        return redirect(url_for('dashboard'))
+        debug_info.append({
+            'name': medicine.name,
+            'stored_utc': utc_time.strftime('%H:%M:%S'),
+            'ph_time': ph_time.strftime('%I:%M %p'),
+            'days': medicine.days
+        })
+    
+    # Current time info
+    now_utc = datetime.utcnow()
+    now_ph = now_utc + timedelta(hours=8)
+    
+    return render_template('debug_times.html', 
+                         debug_info=debug_info,
+                         current_utc=now_utc.strftime('%H:%M:%S'),
+                         current_ph=now_ph.strftime('%I:%M %p'))
 
 # Initialize scheduler
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':

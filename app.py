@@ -153,37 +153,38 @@ def send_email_notification(user_email, medicine_name, dosage, time_str):
 
 # Check reminders function
 # Check reminders function (Philippine Time UTC+8)
+# Update the check_due_medicines function:
 def check_due_medicines():
     with app.app_context():
         try:
             # Get current UTC time
             now_utc = datetime.utcnow()
             
-            # Convert current UTC to Philippine Time (for logging and day of week)
+            # Convert to Philippine Time (UTC+8) for day checking
             now_ph = now_utc + timedelta(hours=8)
-            current_time_ph = now_ph.time()
             current_day_ph = now_ph.strftime('%a')  # e.g., 'Sun', 'Mon'
             
+            # For time comparison, we need to convert current PH time BACK to UTC
+            # because medicines are stored as UTC
+            current_time_ph = now_ph.time()
+            
+            # Convert current PH time to equivalent UTC for database comparison
+            # (since medicines are stored as UTC)
+            current_time_ph_dt = datetime.combine(datetime.today(), current_time_ph)
+            current_time_utc_for_compare = (current_time_ph_dt - timedelta(hours=8)).time()
+            
+            # 5 minutes later in PH Time, converted to UTC
+            five_minutes_later_ph_dt = now_ph + timedelta(minutes=5)
+            five_minutes_later_ph = five_minutes_later_ph_dt.time()
+            five_minutes_later_ph_as_dt = datetime.combine(datetime.today(), five_minutes_later_ph)
+            five_minutes_later_utc = (five_minutes_later_ph_as_dt - timedelta(hours=8)).time()
+            
             logger.info(f"Checking due medicines for {current_day_ph} at {current_time_ph} (PH Time)")
+            logger.info(f"Looking for medicines between {current_time_utc_for_compare} and {five_minutes_later_utc} (UTC in DB)")
             
-            # We are looking for medicines that are due in the next 5 minutes in PH Time.
-            # But the stored time is in UTC, so we adjust the current time to UTC.
-            current_time_utc = now_utc.time()
-            five_minutes_later_utc = (now_utc + timedelta(minutes=5)).time()
-            
-            # Handle day boundary for the time window
-            if current_time_utc <= five_minutes_later_utc:
-                # Normal case: time window within the same day
-                time_filter = Medicine.time.between(current_time_utc, five_minutes_later_utc)
-            else:
-                # The window crosses midnight, so we look for times >= current_time_utc OR <= five_minutes_later_utc
-                time_filter = db.or_(
-                    Medicine.time >= current_time_utc,
-                    Medicine.time <= five_minutes_later_utc
-                )
-            
+            # Query medicines stored as UTC that match the current PH time window
             medicines = Medicine.query.filter(
-                time_filter,
+                Medicine.time.between(current_time_utc_for_compare, five_minutes_later_utc),
                 Medicine.days.like(f'%{current_day_ph}%'),
                 Medicine.status == 'pending'
             ).all()
@@ -197,8 +198,10 @@ def check_due_medicines():
                     
                     logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
                     
-                    # Convert the stored UTC time to PH Time for the email
-                    medicine_time_ph = (datetime.combine(datetime.today(), medicine.time) + timedelta(hours=8)).time()
+                    # Convert stored UTC time to PH Time for email display
+                    medicine_time_utc = medicine.time
+                    medicine_time_ph_dt = datetime.combine(datetime.today(), medicine_time_utc) + timedelta(hours=8)
+                    medicine_time_ph = medicine_time_ph_dt.time()
                     
                     success = send_email_notification(
                         medicine.user.email,
@@ -298,10 +301,13 @@ def dashboard():
 
         # Convert each medicine's time to Philippine Time for display
         for medicine in medicines:
-            # Combine with an arbitrary date (today) to do time arithmetic
+            # Medicine.time is stored as UTC
             utc_datetime = datetime.combine(datetime.today(), medicine.time)
             ph_datetime = utc_datetime + timedelta(hours=8)
             medicine.display_time = ph_datetime.time().strftime('%I:%M %p')
+            
+            # Also store the original time for comparison
+            medicine.time_str = medicine.time.strftime('%H:%M')
 
         # Group medicines by status
         pending_medicines = [m for m in medicines if m.status == 'pending']

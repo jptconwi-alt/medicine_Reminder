@@ -430,6 +430,44 @@ def test_email():
         flash('Error sending test email')
         return redirect(url_for('dashboard'))
 
+
+
+@app.route('/fix_medicine_times')
+@login_required
+def fix_medicine_times():
+    """Fix existing medicine times - Convert from incorrect UTC to correct PH Time"""
+    try:
+        # List of your current medicines and what they should be
+        medicines_to_fix = [
+            {"current_utc": "19:28:00", "correct_ph": "19:28:00"},  # 7:28 PM PH Time
+            {"current_utc": "19:42:00", "correct_ph": "19:42:00"},  # 7:42 PM PH Time
+            {"current_utc": "20:00:00", "correct_ph": "20:00:00"},  # 8:00 PM PH Time
+            {"current_utc": "20:08:00", "correct_ph": "20:08:00"},  # 8:08 PM PH Time
+        ]
+        
+        for fix in medicines_to_fix:
+            # Convert correct PH Time to UTC for storage
+            ph_time = datetime.strptime(fix["correct_ph"], '%H:%M:%S').time()
+            ph_dt = datetime.combine(datetime.today(), ph_time)
+            utc_dt = ph_dt - timedelta(hours=8)
+            utc_time = utc_dt.time()
+            
+            # Find and update medicine
+            medicine = Medicine.query.filter_by(time=datetime.strptime(fix["current_utc"], '%H:%M:%S').time()).first()
+            if medicine:
+                medicine.time = utc_time
+                logger.info(f"Updated {medicine.name} from {fix['current_utc']} to {utc_time} (stored as UTC)")
+        
+        db.session.commit()
+        flash('✅ Medicine times fixed! They are now set for 7:28 PM, 7:42 PM, 8:00 PM, 8:08 PM Philippine Time')
+        return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error fixing medicine times: {e}")
+        flash('Error fixing medicine times')
+        return redirect(url_for('dashboard'))
+
 # Initialize scheduler
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()

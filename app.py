@@ -420,24 +420,30 @@ def health_check():
 def test_email():
     """Send a test email to the logged-in user"""
     try:
-        success = send_email_notification(
-            current_user.email,
-            "Test Medicine",
-            "1 tablet",
-            datetime.now().strftime('%I:%M %p')
+        # Debug logging
+        logger.info(f"=== TEST EMAIL DEBUG ===")
+        logger.info(f"User email: {current_user.email}")
+        logger.info(f"MAIL_USERNAME from env: {os.environ.get('MAIL_USERNAME')}")
+        logger.info(f"MAIL_PASSWORD set: {'Yes' if os.environ.get('MAIL_PASSWORD') else 'No'}")
+        logger.info(f"MAIL_SERVER: {app.config['MAIL_SERVER']}")
+        logger.info(f"MAIL_PORT: {app.config['MAIL_PORT']}")
+        
+        # Try a simple email first
+        msg = Message(
+            subject='Test from Medicine Reminder',
+            recipients=[current_user.email],
+            body='This is a test email from your Medicine Reminder app.'
         )
         
-        if success:
-            flash('Test email sent successfully!')
-        else:
-            flash('Failed to send test email')
-            
+        mail.send(msg)
+        logger.info("✅ Test email sent successfully!")
+        flash('Test email sent successfully! Check your inbox (and spam).')
         return redirect(url_for('dashboard'))
+        
     except Exception as e:
-        logger.error(f"Test email error: {e}")
-        flash('Error sending test email')
+        logger.error(f"❌ Test email error: {str(e)}", exc_info=True)
+        flash(f'Error sending test email: {str(e)}')
         return redirect(url_for('dashboard'))
-
 
 
 @app.route('/fix_medicine_times')

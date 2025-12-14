@@ -152,14 +152,11 @@ def send_email_notification(user_email, medicine_name, dosage, time_str):
 
 # Check reminders function
 def check_due_medicines():
-    """Check and send notifications for due medicines"""
     with app.app_context():
         try:
             now = datetime.now()
             current_time = now.time()
-            current_day = now.strftime('%A')
-            
-            logger.info(f"Checking due medicines for {current_day} at {current_time}")
+            current_day = now.strftime('%a')  # Changed to abbreviation (e.g., 'Sun')
             
             # Get medicines due in the next 5 minutes
             five_minutes_later = (datetime.combine(now.date(), current_time) + timedelta(minutes=5)).time()
@@ -173,18 +170,10 @@ def check_due_medicines():
             logger.info(f"Found {len(medicines)} medicines due")
             
             for medicine in medicines:
-                # Check if we should send notification
-                should_notify = False
-                
-                if medicine.last_notified is None:
-                    should_notify = True
-                else:
-                    # If last notified was more than 1 hour ago
-                    time_since_last = now - medicine.last_notified
-                    if time_since_last > timedelta(hours=1):
-                        should_notify = True
-                
-                if should_notify:
+                # Only send if not notified in the last hour
+                if (medicine.last_notified is None or 
+                    (now - medicine.last_notified) > timedelta(hours=1)):
+                    
                     logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
                     
                     success = send_email_notification(
@@ -197,8 +186,8 @@ def check_due_medicines():
                     if success:
                         medicine.last_notified = now
                         db.session.commit()
-                        logger.info(f"✅ Reminder sent and recorded for '{medicine.name}'")
-            
+                        logger.info(f"✅ Reminder sent for '{medicine.name}'")
+                        
         except Exception as e:
             logger.error(f"❌ Error checking reminders: {e}")
 

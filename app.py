@@ -333,7 +333,7 @@ def add_medicine():
             logger.error(f"Add medicine error: {e}")
             flash('An error occurred. Please try again.')
     
-    days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        days_of_week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     return render_template('add_medicine.html', days=days_of_week)
 
 @app.route('/update_status/<int:medicine_id>', methods=['POST'])

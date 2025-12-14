@@ -298,9 +298,9 @@ def dashboard():
 @app.route('/add_medicine', methods=['GET', 'POST'])
 @login_required
 def add_medicine():
-    # Define days_of_week here, so it's available for both GET and POST
-    days_of_week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
+    # Define the days of the week (using abbreviations to match the scheduler)
+    days_of_week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    
     if request.method == 'POST':
         name = request.form.get('name')
         dosage = request.form.get('dosage')
@@ -309,7 +309,7 @@ def add_medicine():
         
         if not name or not time_str or not days:
             flash('Please fill in all required fields')
-            return redirect(url_for('add_medicine'))
+            return render_template('add_medicine.html', days=days_of_week)
         
         try:
             time_obj = datetime.strptime(time_str, '%H:%M').time()
@@ -331,7 +331,6 @@ def add_medicine():
             
         except ValueError:
             flash('Invalid time format. Please use HH:MM format')
-            # Now we can return the template with days_of_week because it's defined above
             return render_template('add_medicine.html', days=days_of_week)
         except Exception as e:
             db.session.rollback()
@@ -339,7 +338,7 @@ def add_medicine():
             flash('An error occurred. Please try again.')
             return render_template('add_medicine.html', days=days_of_week)
     
-    # If it's a GET request, we just render the template with days_of_week
+    # For GET request, just render the form
     return render_template('add_medicine.html', days=days_of_week)
 
 @app.route('/update_status/<int:medicine_id>', methods=['POST'])

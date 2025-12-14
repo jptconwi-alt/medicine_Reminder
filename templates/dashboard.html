@@ -58,7 +58,7 @@
                             <i class="bi bi-capsule"></i>
                             <strong>Dosage:</strong> {{ medicine.dosage or 'As prescribed' }}
                         </p>
-                        <p class="mb-1"><i class="bi bi-clock"></i><strong>Time:</strong> {{ medicine.time.strftime('%I:%M %p') }}</p>
+                        <p class="mb-1"><i class="bi bi-clock"></i><strong>Time:</strong> {{ medicine.display_time }}</p>
                         <p class="mb-0">
                             <i class="bi bi-calendar-week"></i>
                             <strong>Days:</strong> 

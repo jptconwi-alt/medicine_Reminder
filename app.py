@@ -72,17 +72,21 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         try:
+            # Drop all tables and recreate (for development only!)
+            # db.drop_all()
             db.create_all()
-            logger.info("Database tables created successfully")
+            logger.info("✅ Database tables created successfully")
+            
+            # Test database connection
+            test_connection = db.session.execute('SELECT 1').fetchone()
+            if test_connection:
+                logger.info("✅ Database connection test passed")
+            else:
+                logger.error("❌ Database connection test failed")
+                
         except Exception as e:
-            logger.error(f"Error creating database tables: {e}")
-            # Try creating tables one by one
-            try:
-                User.__table__.create(db.engine, checkfirst=True)
-                Medicine.__table__.create(db.engine, checkfirst=True)
-                logger.info("Tables created individually")
-            except Exception as e2:
-                logger.error(f"Failed to create tables: {e2}")
+            logger.error(f"❌ Error creating database tables: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
 
 # Routes
 @app.route('/')

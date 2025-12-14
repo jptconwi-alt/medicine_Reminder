@@ -71,21 +71,23 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         try:
+            # Create tables if they don't exist
             db.create_all()
-            logger.info("✅ Database tables created successfully")
+            logger.info("✅ Database tables checked/created successfully")
             
-            # Check if all required columns exist in medicines table
+            # Add missing columns without dropping tables
             from sqlalchemy import inspect, text
+            
             inspector = inspect(db.engine)
             columns = [col['name'] for col in inspector.get_columns('medicines')]
             
-            # Add missing columns if they don't exist
+            # Define required columns with their types
             required_columns = {
-                'name': 'VARCHAR(100) DEFAULT \'Medicine\'',
-                'time': 'TIME',
+                'name': 'VARCHAR(100)',
                 'dosage': 'VARCHAR(50)',
+                'time': 'TIME',
                 'days': 'VARCHAR(100)',
-                'status': 'VARCHAR(20) DEFAULT \'pending\'',
+                'status': 'VARCHAR(20)',
                 'user_id': 'INTEGER',
                 'created_at': 'TIMESTAMP',
                 'last_notified': 'TIMESTAMP'
@@ -93,19 +95,18 @@ def init_db():
             
             for column_name, column_type in required_columns.items():
                 if column_name not in columns:
-                    logger.warning(f"⚠️ '{column_name}' column missing, adding it...")
                     try:
-                        # 使用 SQLAlchemy 的 text() 来执行原始 SQL
+                        logger.info(f"Adding missing column '{column_name}'...")
                         db.session.execute(text(f"""
                             ALTER TABLE medicines 
                             ADD COLUMN {column_name} {column_type}
                         """))
                         db.session.commit()
-                        logger.info(f"✅ Added missing '{column_name}' column")
+                        logger.info(f"✅ Added column '{column_name}'")
                     except Exception as e:
-                        logger.error(f"❌ Error adding column {column_name}: {e}")
+                        logger.error(f"Error adding column {column_name}: {e}")
                         db.session.rollback()
-                
+                        
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
 

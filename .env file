@@ -1,0 +1,8 @@
+SECRET_KEY=your-secret-key-here-change-this
+DATABASE_URL=postgresql://username:password@localhost/medicine_reminder
+
+# Email Configuration (for Gmail)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASSWORD=your-app-specific-password

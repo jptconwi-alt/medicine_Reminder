@@ -7,6 +7,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from flask_mail import Mail, Message  # Add Flask-Mail
 from dotenv import load_dotenv
 import atexit
 import logging
@@ -19,6 +20,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Email configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')  # Your Gmail address
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')  # Your Gmail app password
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@medreminder.com')
+
+# Initialize Flask-Mail
+mail = Mail(app)
 
 # Get database URL from environment (Render provides DATABASE_URL)
 database_url = os.environ.get('DATABASE_URL')
@@ -53,7 +65,7 @@ class User(UserMixin, db.Model):
     medicines = db.relationship('Medicine', backref='user', lazy=True, cascade='all, delete-orphan')
 
 class Medicine(db.Model):
-    __tablename__ = 'medicines'  # CHANGED from 'medicine_logs' to 'medicines'
+    __tablename__ = 'medicines'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     dosage = db.Column(db.String(50))
@@ -73,29 +85,23 @@ def init_db():
         try:
             from sqlalchemy import text
             
-            # Drop all existing tables
-            logger.info("Dropping all existing tables...")
+            print("=" * 50)
+            print("Initializing database...")
+            print("=" * 50)
             
-            # First, drop medicine_logs if it exists
-            db.session.execute(text('DROP TABLE IF EXISTS medicine_logs CASCADE'))
-            
-            # Drop notifications if it exists
-            db.session.execute(text('DROP TABLE IF EXISTS notifications CASCADE'))
-            
-            # Drop medicines if it exists
-            db.session.execute(text('DROP TABLE IF EXISTS medicines CASCADE'))
-            
-            # Drop users if it exists
-            db.session.execute(text('DROP TABLE IF EXISTS users CASCADE'))
+            # Drop all tables if they exist
+            tables = ['medicines', 'users']
+            for table in tables:
+                db.session.execute(text(f'DROP TABLE IF EXISTS {table} CASCADE'))
+                print(f"Dropped table: {table}")
             
             db.session.commit()
-            logger.info("All tables dropped successfully")
             
-            # Now create all tables with correct structure
+            # Create all tables
             db.create_all()
-            logger.info("✅ Database tables created successfully")
+            print("✅ All tables created successfully")
             
-            # Verify tables were created
+            # Verify tables
             result = db.session.execute(text("""
                 SELECT table_name 
                 FROM information_schema.tables 
@@ -103,17 +109,127 @@ def init_db():
                 ORDER BY table_name
             """))
             
-            tables = [row[0] for row in result.fetchall()]
-            logger.info(f"Current tables in database: {tables}")
+            created_tables = [row[0] for row in result.fetchall()]
+            print(f"Current tables: {created_tables}")
             
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
             db.session.rollback()
 
-# Initialize database on import
+# Initialize database
 init_db()
 
-# Routes
+# Email notification function using Flask-Mail
+def send_email_notification(user_email, medicine_name, dosage, time_str):
+    """Send email notification using Gmail SMTP"""
+    try:
+        # Create email message
+        subject = f"⏰ Medicine Reminder: {medicine_name}"
+        
+        # Get current day
+        current_day = datetime.now().strftime('%A')
+        
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
+                <div style="background: linear-gradient(to right, #4b6cb7, #182848); padding: 20px; border-radius: 10px 10px 0 0; color: white; text-align: center;">
+                    <h1 style="margin: 0;">💊 Medicine Reminder</h1>
+                </div>
+                
+                <div style="padding: 30px;">
+                    <h2>Time to take your medicine!</h2>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4b6cb7;">
+                        <h3 style="margin-top: 0; color: #2c3e50;">{medicine_name}</h3>
+                        <p><strong>Dosage:</strong> {dosage or 'As prescribed'}</p>
+                        <p><strong>Time:</strong> {time_str}</p>
+                        <p><strong>Day:</strong> {current_day}</p>
+                    </div>
+                    
+                    <p>Please don't forget to take your medicine on time. Your health is important!</p>
+                    
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+                        <p style="color: #666; font-size: 14px;">
+                            This is an automated reminder from your Medicine Reminder app.<br>
+                            You can manage your reminders at <a href="https://medicine-reminder-85qu.onrender.com">Medicine Reminder App</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Create message
+        msg = Message(
+            subject=subject,
+            recipients=[user_email],
+            html=html_body
+        )
+        
+        # Send email
+        mail.send(msg)
+        logger.info(f"✅ Email sent successfully to {user_email}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to send email to {user_email}: {e}")
+        return False
+
+# Check reminders function
+def check_due_medicines():
+    """Check and send notifications for due medicines"""
+    with app.app_context():
+        try:
+            now = datetime.now()
+            current_time = now.time()
+            current_day = now.strftime('%A')
+            
+            logger.info(f"Checking due medicines for {current_day} at {current_time}")
+            
+            # Get medicines due in the next 5 minutes
+            five_minutes_later = (datetime.combine(now.date(), current_time) + timedelta(minutes=5)).time()
+            
+            medicines = Medicine.query.filter(
+                Medicine.time.between(current_time, five_minutes_later),
+                Medicine.days.like(f'%{current_day}%'),
+                Medicine.status == 'pending'
+            ).all()
+            
+            logger.info(f"Found {len(medicines)} medicines due")
+            
+            for medicine in medicines:
+                # Check if we should send notification
+                should_notify = False
+                
+                if medicine.last_notified is None:
+                    should_notify = True
+                else:
+                    # If last notified was more than 1 hour ago
+                    time_since_last = now - medicine.last_notified
+                    if time_since_last > timedelta(hours=1):
+                        should_notify = True
+                
+                if should_notify:
+                    logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
+                    
+                    success = send_email_notification(
+                        medicine.user.email,
+                        medicine.name,
+                        medicine.dosage or "As prescribed",
+                        medicine.time.strftime('%I:%M %p')
+                    )
+                    
+                    if success:
+                        medicine.last_notified = now
+                        db.session.commit()
+                        logger.info(f"✅ Reminder sent and recorded for '{medicine.name}'")
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking reminders: {e}")
+
+# Routes (keep your existing routes as they are)
 @app.route('/')
 def home():
     if current_user.is_authenticated:
@@ -303,59 +419,36 @@ def logout():
 def health_check():
     """Health check endpoint for Render"""
     try:
-        # Try to query database
         db.session.execute('SELECT 1')
         return jsonify({'status': 'healthy', 'database': 'connected'}), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return jsonify({'status': 'unhealthy', 'database': 'disconnected'}), 500
 
-# Email notification function (Basic implementation)
-def send_email_notification(user_email, medicine_name, dosage, time_str):
-    """Simple email notification - you can integrate EmailJS here"""
-    logger.info(f"Reminder: {medicine_name} at {time_str} for {user_email}")
-    # Implement EmailJS integration here
-    return True
+@app.route('/test_email')
+@login_required
+def test_email():
+    """Send a test email to the logged-in user"""
+    try:
+        success = send_email_notification(
+            current_user.email,
+            "Test Medicine",
+            "1 tablet",
+            datetime.now().strftime('%I:%M %p')
+        )
+        
+        if success:
+            flash('Test email sent successfully!')
+        else:
+            flash('Failed to send test email')
+            
+        return redirect(url_for('dashboard'))
+    except Exception as e:
+        logger.error(f"Test email error: {e}")
+        flash('Error sending test email')
+        return redirect(url_for('dashboard'))
 
-# Check reminders function
-def check_due_medicines():
-    """Check and send notifications for due medicines"""
-    with app.app_context():
-        try:
-            now = datetime.now()
-            current_time = now.time()
-            current_day = now.strftime('%A')  # Full day name
-            
-            # Get medicines due in the next 5 minutes
-            five_minutes_later = (datetime.combine(now.date(), current_time) + timedelta(minutes=5)).time()
-            
-            medicines = Medicine.query.filter(
-                Medicine.time.between(current_time, five_minutes_later),
-                Medicine.days.like(f'%{current_day}%'),
-                Medicine.status == 'pending'
-            ).all()
-            
-            for medicine in medicines:
-                # Only send if not notified in the last hour
-                if (medicine.last_notified is None or 
-                    (now - medicine.last_notified) > timedelta(hours=1)):
-                    
-                    success = send_email_notification(
-                        medicine.user.email,
-                        medicine.name,
-                        medicine.dosage or "As prescribed",
-                        medicine.time.strftime('%I:%M %p')
-                    )
-                    
-                    if success:
-                        medicine.last_notified = now
-                        db.session.commit()
-                        logger.info(f"Sent reminder for {medicine.name} to {medicine.user.email}")
-                        
-        except Exception as e:
-            logger.error(f"Error checking reminders: {e}")
-
-# Initialize scheduler (only if not in debug mode)
+# Initialize scheduler
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     scheduler = BackgroundScheduler()
     # Check every minute

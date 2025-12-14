@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Add Medicine - Medicine Reminder{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="text-center">Add New Medicine</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_medicine') }}">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Medicine Name *</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="dosage" class="form-label">Dosage (e.g., 1 tablet, 5ml)</label>
+                        <input type="text" class="form-control" id="dosage" name="dosage">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="time" class="form-label">Time to Take *</label>
+                        <input type="time" class="form-control" id="time" name="time" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Days to Take *</label>
+                        <div class="form-check">
+                            {% for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="day-{{ day }}" name="days" value="{{ day }}">
+                                <label class="form-check-label" for="day-{{ day }}">{{ day }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">Add Medicine</button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -83,38 +83,11 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         try:
-            from sqlalchemy import text
-            
-            print("=" * 50)
-            print("Initializing database...")
-            print("=" * 50)
-            
-            # Drop all tables if they exist
-            tables = ['medicines', 'users']
-            for table in tables:
-                db.session.execute(text(f'DROP TABLE IF EXISTS {table} CASCADE'))
-                print(f"Dropped table: {table}")
-            
-            db.session.commit()
-            
-            # Create all tables
+            # This will create tables if they don't exist.
             db.create_all()
-            print("✅ All tables created successfully")
-            
-            # Verify tables
-            result = db.session.execute(text("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public'
-                ORDER BY table_name
-            """))
-            
-            created_tables = [row[0] for row in result.fetchall()]
-            print(f"Current tables: {created_tables}")
-            
+            logger.info("✅ Database tables checked/created")
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
-            db.session.rollback()
 
 # Initialize database
 init_db()

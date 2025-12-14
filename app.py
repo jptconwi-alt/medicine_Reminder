@@ -53,7 +53,7 @@ class User(UserMixin, db.Model):
     medicines = db.relationship('Medicine', backref='user', lazy=True, cascade='all, delete-orphan')
 
 class Medicine(db.Model):
-    __tablename__ = 'medicine_logs'
+    __tablename__ = 'medicines'  # CHANGED from 'medicine_logs' to 'medicines'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     dosage = db.Column(db.String(50))
@@ -71,27 +71,47 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         try:
-            from sqlalchemy import inspect, text
-            inspector = inspect(db.engine)
+            from sqlalchemy import text
             
-            # Check if medicines table exists
-            if 'medicines' not in inspector.get_table_names():
-                logger.info("Medicines table does not exist, creating...")
-                
-                # If medicine_logs table exists, drop it
-                if 'medicine_logs' in inspector.get_table_names():
-                    logger.info("Dropping old medicine_logs table...")
-                    db.session.execute(text('DROP TABLE medicine_logs CASCADE'))
-                    db.session.commit()
-                
-                # Create all tables (this will create medicines and users if they don't exist)
-                db.create_all()
-                logger.info("✅ Database tables created successfully")
-            else:
-                logger.info("✅ Medicines table already exists")
-                
+            # Drop all existing tables
+            logger.info("Dropping all existing tables...")
+            
+            # First, drop medicine_logs if it exists
+            db.session.execute(text('DROP TABLE IF EXISTS medicine_logs CASCADE'))
+            
+            # Drop notifications if it exists
+            db.session.execute(text('DROP TABLE IF EXISTS notifications CASCADE'))
+            
+            # Drop medicines if it exists
+            db.session.execute(text('DROP TABLE IF EXISTS medicines CASCADE'))
+            
+            # Drop users if it exists
+            db.session.execute(text('DROP TABLE IF EXISTS users CASCADE'))
+            
+            db.session.commit()
+            logger.info("All tables dropped successfully")
+            
+            # Now create all tables with correct structure
+            db.create_all()
+            logger.info("✅ Database tables created successfully")
+            
+            # Verify tables were created
+            result = db.session.execute(text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+            """))
+            
+            tables = [row[0] for row in result.fetchall()]
+            logger.info(f"Current tables in database: {tables}")
+            
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
+            db.session.rollback()
+
+# Initialize database on import
+init_db()
 
 # Routes
 @app.route('/')
@@ -346,9 +366,6 @@ if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     atexit.register(lambda: scheduler.shutdown())
 
 if __name__ == '__main__':
-    # Initialize database
-    init_db()
-    
     # Get port from environment (Render sets PORT)
     port = int(os.environ.get('PORT', 5000))
     

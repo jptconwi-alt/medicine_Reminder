@@ -151,36 +151,35 @@ def send_email_notification(user_email, medicine_name, dosage, time_str):
         return False
 
 # Check reminders function
+# Check reminders function (Philippine Time UTC+8)
 def check_due_medicines():
     with app.app_context():
         try:
-            now = datetime.now()
-            current_time = now.time()
-            current_day = now.strftime('%a')  # Abbreviated day
+            # Get current UTC time
+            now_utc = datetime.utcnow()
             
-            logger.info(f"Checking due medicines for {current_day} at {current_time}")
+            # Convert to Philippine Time (UTC+8)
+            now_ph = now_utc + timedelta(hours=8)
+            current_time_ph = now_ph.time()
+            current_day_ph = now_ph.strftime('%a')  # e.g., 'Sun', 'Mon'
             
-            # Get all medicines for debugging
-            all_medicines = Medicine.query.all()
-            logger.info(f"Total medicines in DB: {len(all_medicines)}")
-            for med in all_medicines:
-                logger.info(f"Medicine: {med.name}, Time: {med.time}, Days: {med.days}, Status: {med.status}")
+            logger.info(f"Checking due medicines for {current_day_ph} at {current_time_ph} (PH Time)")
             
-            # Get medicines due in the next 5 minutes
-            five_minutes_later = (datetime.combine(now.date(), current_time) + timedelta(minutes=5)).time()
+            # Get medicines due in the next 5 minutes (in Philippine Time)
+            five_minutes_later_ph = (datetime.combine(now_ph.date(), current_time_ph) + timedelta(minutes=5)).time()
             
             medicines = Medicine.query.filter(
-                Medicine.time.between(current_time, five_minutes_later),
-                Medicine.days.like(f'%{current_day}%'),
+                Medicine.time.between(current_time_ph, five_minutes_later_ph),
+                Medicine.days.like(f'%{current_day_ph}%'),
                 Medicine.status == 'pending'
             ).all()
             
-            logger.info(f"Found {len(medicines)} medicines due")
+            logger.info(f"Found {len(medicines)} medicines due in PH Time")
             
             for medicine in medicines:
                 # Only send if not notified in the last hour
                 if (medicine.last_notified is None or 
-                    (now - medicine.last_notified) > timedelta(hours=1)):
+                    (now_utc - medicine.last_notified) > timedelta(hours=1)):
                     
                     logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
                     
@@ -188,11 +187,12 @@ def check_due_medicines():
                         medicine.user.email,
                         medicine.name,
                         medicine.dosage or "As prescribed",
-                        medicine.time.strftime('%I:%M %p')
+                        # Convert stored UTC time to PH Time for display
+                        (datetime.combine(datetime.today(), medicine.time) + timedelta(hours=8)).time().strftime('%I:%M %p')
                     )
                     
                     if success:
-                        medicine.last_notified = now
+                        medicine.last_notified = now_utc
                         db.session.commit()
                         logger.info(f"✅ Reminder sent for '{medicine.name}'")
                         
@@ -298,7 +298,7 @@ def dashboard():
 @app.route('/add_medicine', methods=['GET', 'POST'])
 @login_required
 def add_medicine():
-    # Define the days of the week (using abbreviations to match the scheduler)
+    # Define days_of_week at the TOP so it's available for both GET and POST
     days_of_week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     
     if request.method == 'POST':
@@ -312,13 +312,20 @@ def add_medicine():
             return render_template('add_medicine.html', days=days_of_week)
         
         try:
-            time_obj = datetime.strptime(time_str, '%H:%M').time()
+            # User enters Philippine Time (UTC+8)
+            time_ph = datetime.strptime(time_str, '%H:%M').time()
+            
+            # Convert to UTC for storage (subtract 8 hours)
+            time_ph_dt = datetime.combine(datetime.today(), time_ph)
+            time_utc_dt = time_ph_dt - timedelta(hours=8)
+            time_utc = time_utc_dt.time()
+            
             days_str = ','.join(days)
             
             medicine = Medicine(
                 name=name,
                 dosage=dosage,
-                time=time_obj,
+                time=time_utc,  # Store as UTC
                 days=days_str,
                 user_id=current_user.id
             )
@@ -338,7 +345,7 @@ def add_medicine():
             flash('An error occurred. Please try again.')
             return render_template('add_medicine.html', days=days_of_week)
     
-    # For GET request, just render the form
+    # GET request - render the form
     return render_template('add_medicine.html', days=days_of_week)
 
 @app.route('/update_status/<int:medicine_id>', methods=['POST'])

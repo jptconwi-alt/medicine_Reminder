@@ -68,25 +68,28 @@ class Medicine(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Initialize database
 def init_db():
     with app.app_context():
         try:
-            # Drop all tables and recreate (for development only!)
-            # db.drop_all()
             db.create_all()
             logger.info("✅ Database tables created successfully")
             
-            # Test database connection
-            test_connection = db.session.execute('SELECT 1').fetchone()
-            if test_connection:
-                logger.info("✅ Database connection test passed")
-            else:
-                logger.error("❌ Database connection test failed")
+            # Check if 'name' column exists in medicines table
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('medicines')]
+            
+            if 'name' not in columns:
+                logger.warning("⚠️ 'name' column missing, adding it...")
+                db.session.execute("""
+                    ALTER TABLE medicines 
+                    ADD COLUMN name VARCHAR(100) DEFAULT 'Medicine'
+                """)
+                db.session.commit()
+                logger.info("✅ Added missing 'name' column")
                 
         except Exception as e:
-            logger.error(f"❌ Error creating database tables: {e}")
-            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.error(f"❌ Error: {e}")
 
 # Routes
 @app.route('/')

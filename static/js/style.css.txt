@@ -1,0 +1,124 @@
+/* Bootstrap Icons */
+@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css");
+
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    background: linear-gradient(to right, #4b6cb7, #182848) !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+.card {
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.medicine-card {
+    background: white;
+}
+
+.medicine-card .card-title {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.medicine-card .medicine-details {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    border-left: 4px solid #4b6cb7;
+}
+
+.btn-group .btn {
+    border-radius: 8px !important;
+    margin: 0 2px;
+}
+
+.login-container, .signup-container {
+    max-width: 400px;
+    margin: 50px auto;
+}
+
+.form-control {
+    border-radius: 8px;
+    padding: 10px 15px;
+    border: 2px solid #e0e0e0;
+}
+
+.form-control:focus {
+    border-color: #4b6cb7;
+    box-shadow: 0 0 0 0.25rem rgba(75, 108, 183, 0.25);
+}
+
+.btn-primary {
+    background: linear-gradient(to right, #4b6cb7, #182848);
+    border: none;
+    padding: 10px 25px;
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(to right, #3a5ca9, #0d1c36);
+    transform: translateY(-2px);
+}
+
+.btn-success {
+    background: linear-gradient(to right, #00b09b, #96c93d);
+    border: none;
+}
+
+.btn-warning {
+    background: linear-gradient(to right, #f7971e, #ffd200);
+    border: none;
+}
+
+.alert {
+    border-radius: 10px;
+    border: none;
+}
+
+.badge {
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+.dashboard-header {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 20px;
+    }
+    
+    .btn-group {
+        flex-direction: column;
+    }
+    
+    .btn-group .btn {
+        margin-bottom: 5px;
+        width: 100%;
+    }
+}

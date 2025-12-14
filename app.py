@@ -159,18 +159,31 @@ def check_due_medicines():
             # Get current UTC time
             now_utc = datetime.utcnow()
             
-            # Convert to Philippine Time (UTC+8)
+            # Convert current UTC to Philippine Time (for logging and day of week)
             now_ph = now_utc + timedelta(hours=8)
             current_time_ph = now_ph.time()
             current_day_ph = now_ph.strftime('%a')  # e.g., 'Sun', 'Mon'
             
             logger.info(f"Checking due medicines for {current_day_ph} at {current_time_ph} (PH Time)")
             
-            # Get medicines due in the next 5 minutes (in Philippine Time)
-            five_minutes_later_ph = (datetime.combine(now_ph.date(), current_time_ph) + timedelta(minutes=5)).time()
+            # We are looking for medicines that are due in the next 5 minutes in PH Time.
+            # But the stored time is in UTC, so we adjust the current time to UTC.
+            current_time_utc = now_utc.time()
+            five_minutes_later_utc = (now_utc + timedelta(minutes=5)).time()
+            
+            # Handle day boundary for the time window
+            if current_time_utc <= five_minutes_later_utc:
+                # Normal case: time window within the same day
+                time_filter = Medicine.time.between(current_time_utc, five_minutes_later_utc)
+            else:
+                # The window crosses midnight, so we look for times >= current_time_utc OR <= five_minutes_later_utc
+                time_filter = db.or_(
+                    Medicine.time >= current_time_utc,
+                    Medicine.time <= five_minutes_later_utc
+                )
             
             medicines = Medicine.query.filter(
-                Medicine.time.between(current_time_ph, five_minutes_later_ph),
+                time_filter,
                 Medicine.days.like(f'%{current_day_ph}%'),
                 Medicine.status == 'pending'
             ).all()
@@ -184,12 +197,14 @@ def check_due_medicines():
                     
                     logger.info(f"Sending reminder for '{medicine.name}' to {medicine.user.email}")
                     
+                    # Convert the stored UTC time to PH Time for the email
+                    medicine_time_ph = (datetime.combine(datetime.today(), medicine.time) + timedelta(hours=8)).time()
+                    
                     success = send_email_notification(
                         medicine.user.email,
                         medicine.name,
                         medicine.dosage or "As prescribed",
-                        # Convert stored UTC time to PH Time for display
-                        (datetime.combine(datetime.today(), medicine.time) + timedelta(hours=8)).time().strftime('%I:%M %p')
+                        medicine_time_ph.strftime('%I:%M %p')
                     )
                     
                     if success:

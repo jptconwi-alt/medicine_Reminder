@@ -280,22 +280,28 @@ def dashboard():
     try:
         medicines = Medicine.query.filter_by(user_id=current_user.id)\
             .order_by(Medicine.time).all()
-        
+
+        # Convert each medicine's time to Philippine Time for display
+        for medicine in medicines:
+            # Combine with an arbitrary date (today) to do time arithmetic
+            utc_datetime = datetime.combine(datetime.today(), medicine.time)
+            ph_datetime = utc_datetime + timedelta(hours=8)
+            medicine.display_time = ph_datetime.time().strftime('%I:%M %p')
+
         # Group medicines by status
         pending_medicines = [m for m in medicines if m.status == 'pending']
         taken_medicines = [m for m in medicines if m.status == 'taken']
         missed_medicines = [m for m in medicines if m.status == 'missed']
-        
+
         return render_template('dashboard.html', 
                              medicines=medicines,
                              pending_medicines=pending_medicines,
                              taken_medicines=taken_medicines,
-                             missed_medicines=missed_medicines,
-                             datetime=datetime, timedelta=timedelta)  # Pass datetime and timedelta
+                             missed_medicines=missed_medicines)
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
         flash('An error occurred while loading dashboard')
-        return render_template('dashboard.html', medicines=[], datetime=datetime, timedelta=timedelta)
+        return render_template('dashboard.html', medicines=[])
 
 @app.route('/add_medicine', methods=['GET', 'POST'])
 @login_required

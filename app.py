@@ -11,6 +11,7 @@ from flask_mail import Mail, Message  # Add Flask-Mail
 from dotenv import load_dotenv
 import atexit
 import logging
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -289,11 +290,12 @@ def dashboard():
                              medicines=medicines,
                              pending_medicines=pending_medicines,
                              taken_medicines=taken_medicines,
-                             missed_medicines=missed_medicines)
+                             missed_medicines=missed_medicines,
+                             datetime=datetime, timedelta=timedelta)  # Pass datetime and timedelta
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
         flash('An error occurred while loading dashboard')
-        return render_template('dashboard.html', medicines=[])
+        return render_template('dashboard.html', medicines=[], datetime=datetime, timedelta=timedelta)
 
 @app.route('/add_medicine', methods=['GET', 'POST'])
 @login_required

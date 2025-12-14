@@ -6,30 +6,25 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
-from flask_mail import Mail, Message
-from dotenv import load_dotenv
 import atexit
 import logging
+import requests
+import json
 
 # Load environment variables
+from dotenv import load_dotenv
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Email configuration for Gmail - FIXED
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', 'jpconwi2005@gmail.com')  # FIXED
-app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', 'dyrsdcntrrvkauor')  # Your app password
-app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'jpconwi2005@gmail.com')  # FIXED
-
-# Initialize Flask-Mail
-mail = Mail(app)
+# Brevo Configuration
+BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
+BREVO_SENDER_EMAIL = os.environ.get('BREVO_SENDER_EMAIL', 'jpconwi2005@gmail.com')
+BREVO_SENDER_NAME = os.environ.get('BREVO_SENDER_NAME', 'medicine')
 
 # Get database URL
 database_url = os.environ.get('DATABASE_URL')
@@ -83,76 +78,166 @@ def init_db():
             db.create_all()
             logger.info("✅ Database tables checked/created")
             
-            # Debug: Log environment variables (without password)
-            logger.info(f"📧 Email configured for: {app.config['MAIL_USERNAME']}")
-            logger.info(f"📧 Mail server: {app.config['MAIL_SERVER']}:{app.config['MAIL_PORT']}")
-            
+            # Check Brevo configuration
+            if BREVO_API_KEY:
+                logger.info("✅ Brevo is configured")
+            else:
+                logger.warning("⚠️ Brevo API key not set - emails will be logged only")
+                
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
 
 init_db()
 
-# Email notification function
-def send_email_notification(user_email, medicine_name, dosage, time_str):
-    """Send email notification using Gmail SMTP"""
+# Brevo Email Function (Works on Render Free Tier)
+def send_email_via_brevo(user_email, medicine_name, dosage, time_str):
+    """Send email using Brevo API"""
     try:
+        if not BREVO_API_KEY:
+            logger.error("❌ Brevo API key not configured")
+            return False
+        
         # Get current PH time
         now_utc = datetime.utcnow()
         now_ph = now_utc + timedelta(hours=8)
         current_day = now_ph.strftime('%A')
         
-        subject = f"💊 Medicine Reminder: {medicine_name}"
-        
-        html_body = f"""
+        # HTML content for email
+        html_content = f"""
+        <!DOCTYPE html>
         <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-                <div style="background: linear-gradient(to right, #4b6cb7, #182848); padding: 20px; border-radius: 10px 10px 0 0; color: white; text-align: center;">
-                    <h1 style="margin: 0;">💊 Medicine Reminder</h1>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; }}
+                .header {{ background: linear-gradient(to right, #4b6cb7, #182848); padding: 20px; border-radius: 10px 10px 0 0; color: white; text-align: center; }}
+                .content {{ padding: 30px; background: #f9f9f9; }}
+                .medicine-box {{ background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4b6cb7; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+                .footer {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 14px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1 style="margin: 0;">💊 Medicine Reminder</h1>
+            </div>
+            
+            <div class="content">
+                <h2>Time to take your medicine!</h2>
+                
+                <div class="medicine-box">
+                    <h3 style="margin-top: 0; color: #2c3e50;">{medicine_name}</h3>
+                    <p><strong>Dosage:</strong> {dosage or 'As prescribed'}</p>
+                    <p><strong>Time:</strong> {time_str} (Philippine Time)</p>
+                    <p><strong>Day:</strong> {current_day}</p>
                 </div>
                 
-                <div style="padding: 30px;">
-                    <h2>Time to take your medicine!</h2>
-                    
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4b6cb7;">
-                        <h3 style="margin-top: 0; color: #2c3e50;">{medicine_name}</h3>
-                        <p><strong>Dosage:</strong> {dosage or 'As prescribed'}</p>
-                        <p><strong>Time:</strong> {time_str} (Philippine Time)</p>
-                        <p><strong>Day:</strong> {current_day}</p>
-                    </div>
-                    
-                    <p>Please don't forget to take your medicine on time. Your health is important!</p>
-                    
-                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
-                        <p style="color: #666; font-size: 14px;">
-                            This is an automated reminder from your Medicine Reminder app.<br>
-                            You can manage your reminders at <a href="https://medicine-reminder-85qu.onrender.com">Medicine Reminder App</a>
-                        </p>
-                    </div>
+                <p>Please don't forget to take your medicine on time. Your health is important! 💙</p>
+                
+                <div class="footer">
+                    <p>This is an automated reminder from your Medicine Reminder app.<br>
+                    You can manage your reminders at <a href="https://medicine-reminder-85qu.onrender.com">Medicine Reminder App</a></p>
                 </div>
             </div>
         </body>
         </html>
         """
         
-        msg = Message(
-            subject=subject,
-            recipients=[user_email],
-            html=html_body,
-            sender=app.config['MAIL_DEFAULT_SENDER']
-        )
+        # Text content (for plain text email clients)
+        text_content = f"""
+💊 Medicine Reminder
+
+Time to take your medicine!
+
+Medicine: {medicine_name}
+Dosage: {dosage or 'As prescribed'}
+Time: {time_str} (Philippine Time)
+Day: {current_day}
+
+Please don't forget to take your medicine on time. Your health is important!
+
+This is an automated reminder from your Medicine Reminder app.
+Manage your reminders at https://medicine-reminder-85qu.onrender.com
+        """
         
-        mail.send(msg)
-        logger.info(f"✅ Email sent successfully to {user_email}")
+        # Brevo API request
+        brevo_url = "https://api.brevo.com/v3/smtp/email"
+        
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": BREVO_API_KEY
+        }
+        
+        payload = {
+            "sender": {
+                "name": BREVO_SENDER_NAME,
+                "email": BREVO_SENDER_EMAIL
+            },
+            "to": [
+                {
+                    "email": user_email,
+                    "name": user_email.split('@')[0]
+                }
+            ],
+            "subject": f"💊 Medicine Reminder: {medicine_name}",
+            "htmlContent": html_content,
+            "textContent": text_content,
+            "replyTo": {
+                "email": BREVO_SENDER_EMAIL,
+                "name": BREVO_SENDER_NAME
+            }
+        }
+        
+        response = requests.post(brevo_url, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 201:
+            logger.info(f"✅ Email sent to {user_email} via Brevo")
+            return True
+        else:
+            logger.error(f"❌ Brevo API error for {user_email}: {response.status_code} - {response.text}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"❌ Brevo error for {user_email}: {e}")
+        return False
+
+# Notification function with fallback
+def send_medicine_notification(user_email, medicine_name, dosage, time_str):
+    """Send email notification with Brevo"""
+    try:
+        # Try Brevo first
+        if BREVO_API_KEY:
+            success = send_email_via_brevo(user_email, medicine_name, dosage, time_str)
+            if success:
+                return True
+            else:
+                logger.warning(f"⚠️ Brevo failed for {user_email}")
+        
+        # Fallback: Log to console
+        now_utc = datetime.utcnow()
+        now_ph = now_utc + timedelta(hours=8)
+        current_day = now_ph.strftime('%A')
+        
+        logger.info(f"""
+        📧 EMAIL WOULD BE SENT (Brevo configured):
+        ─────────────────────────────────────
+        To: {user_email}
+        Subject: 💊 Medicine Reminder: {medicine_name}
+        Medicine: {medicine_name}
+        Dosage: {dosage or 'As prescribed'}
+        Time: {time_str} (Philippine Time)
+        Day: {current_day}
+        ─────────────────────────────────────
+        """)
+        
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to send email to {user_email}: {e}")
+        logger.error(f"❌ Notification error: {e}")
         return False
 
-# Check reminders function - SIMPLE AND RELIABLE
+# Check reminders function
 def check_due_medicines():
-    """Check for medicines due in the next 2 minutes"""
+    """Check for medicines due RIGHT NOW (within 2 minute window)"""
     with app.app_context():
         try:
             # Get current time in UTC
@@ -164,26 +249,40 @@ def check_due_medicines():
             current_minute = now_ph.minute
             current_day_ph = now_ph.strftime('%a')  # 'Sun', 'Mon', etc.
             
-            logger.info(f"🔍 Checking medicines for {current_day_ph} at {current_hour:02d}:{current_minute:02d} PH Time")
+            logger.info(f"🕒 Checking at {current_hour:02d}:{current_minute:02d} PH Time ({current_day_ph})")
             
-            # Find medicines due at this exact minute
-            medicines = Medicine.query.filter(
-                db.extract('hour', Medicine.time) == current_hour,
-                db.extract('minute', Medicine.time) == current_minute,
-                Medicine.days.like(f'%{current_day_ph}%'),
-                Medicine.status == 'pending'
-            ).all()
+            # Get all pending medicines
+            all_medicines = Medicine.query.filter_by(status='pending').all()
             
-            logger.info(f"📋 Found {len(medicines)} medicines due now")
+            due_medicines = []
+            for medicine in all_medicines:
+                # Check if today is in the medicine's days
+                medicine_days = medicine.days.split(',') if medicine.days else []
+                
+                if current_day_ph in medicine_days:
+                    # Get medicine time
+                    medicine_hour = medicine.time.hour
+                    medicine_minute = medicine.time.minute
+                    medicine_time_str = f"{medicine_hour:02d}:{medicine_minute:02d}"
+                    
+                    # Check if time matches (within 2 minutes)
+                    time_diff = abs((current_hour * 60 + current_minute) - (medicine_hour * 60 + medicine_minute))
+                    
+                    if time_diff <= 2:  # Within 2 minutes window
+                        due_medicines.append(medicine)
+                        logger.info(f"   ⏰ Found: '{medicine.name}' at {medicine_time_str}")
             
-            for medicine in medicines:
+            logger.info(f"📋 Total due medicines: {len(due_medicines)}")
+            
+            for medicine in due_medicines:
                 # Check if not notified in last 30 minutes
                 if (medicine.last_notified is None or 
                     (now_utc - medicine.last_notified) > timedelta(minutes=30)):
                     
-                    logger.info(f"📤 Sending reminder for '{medicine.name}' to {medicine.user.email}")
+                    logger.info(f"📤 Sending reminder for '{medicine.name}' -> {medicine.user.email}")
                     
-                    success = send_email_notification(
+                    # Send notification
+                    success = send_medicine_notification(
                         medicine.user.email,
                         medicine.name,
                         medicine.dosage or "As prescribed",
@@ -192,10 +291,16 @@ def check_due_medicines():
                     
                     if success:
                         medicine.last_notified = now_utc
-                        db.session.commit()
-                        logger.info(f"✅ Reminder sent for '{medicine.name}'")
+                        try:
+                            db.session.commit()
+                            logger.info(f"✅ Reminder processed for '{medicine.name}'")
+                        except Exception as e:
+                            logger.error(f"❌ Error saving notification time: {e}")
+                            db.session.rollback()
                     else:
                         logger.error(f"❌ Failed to send reminder for '{medicine.name}'")
+                else:
+                    logger.info(f"   ⏱️  Skipping '{medicine.name}' - already notified recently")
                         
         except Exception as e:
             logger.error(f"❌ Error in check_due_medicines: {e}")
@@ -285,11 +390,20 @@ def dashboard():
         now_ph = now_utc + timedelta(hours=8)
         current_ph_time = now_ph.strftime('%I:%M %p')
         current_ph_day = now_ph.strftime('%A')
+        current_hour_min = f"{now_ph.hour:02d}:{now_ph.minute:02d}"
+        
+        # Convert medicine times for display
+        for medicine in medicines:
+            medicine.display_time = medicine.time.strftime('%I:%M %p')
+            medicine.time_24h = medicine.time.strftime('%H:%M')
         
         # Group medicines
         pending_medicines = [m for m in medicines if m.status == 'pending']
         taken_medicines = [m for m in medicines if m.status == 'taken']
         missed_medicines = [m for m in medicines if m.status == 'missed']
+        
+        # Check if Brevo is configured
+        email_enabled = bool(BREVO_API_KEY)
         
         return render_template('dashboard.html', 
                              medicines=medicines,
@@ -297,7 +411,9 @@ def dashboard():
                              taken_medicines=taken_medicines,
                              missed_medicines=missed_medicines,
                              current_ph_time=current_ph_time,
-                             current_ph_day=current_ph_day)
+                             current_ph_day=current_ph_day,
+                             current_hour_min=current_hour_min,
+                             email_enabled=email_enabled)
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
         return render_template('dashboard.html', medicines=[])
@@ -326,7 +442,7 @@ def add_medicine():
             medicine = Medicine(
                 name=name,
                 dosage=dosage,
-                time=time_obj,  # Store as Philippine Time
+                time=time_obj,
                 days=days_str,
                 user_id=current_user.id
             )
@@ -334,7 +450,9 @@ def add_medicine():
             db.session.add(medicine)
             db.session.commit()
             
-            flash(f'✅ Medicine "{name}" added for {time_obj.strftime("%I:%M %p")} Philippine Time!')
+            display_time = time_obj.strftime('%I:%M %p')
+            flash(f'✅ Medicine "{name}" added for {display_time} Philippine Time!')
+            logger.info(f"User {current_user.email} added medicine: {name} at {display_time}")
             return redirect(url_for('dashboard'))
             
         except Exception as e:
@@ -388,60 +506,77 @@ def delete_medicine(medicine_id):
 @app.route('/test_email')
 @login_required
 def test_email():
-    """Test email functionality"""
+    """Send a test email to verify Brevo system"""
     try:
-        # Simple test email
-        msg = Message(
-            subject='✅ Test Email from Medicine Reminder',
-            recipients=[current_user.email],
-            body=f'This is a test email sent at {datetime.utcnow().strftime("%H:%M:%S")} UTC.\n\nIf you received this, email notifications are working!',
-            sender=app.config['MAIL_DEFAULT_SENDER']
-        )
-        
-        mail.send(msg)
-        flash('✅ Test email sent! Check your inbox (and spam folder).')
-        logger.info(f"✅ Test email sent to {current_user.email}")
+        # Test with Brevo if configured
+        if BREVO_API_KEY:
+            success = send_email_via_brevo(
+                current_user.email,
+                "Test Medicine",
+                "1 tablet",
+                datetime.utcnow().strftime('%I:%M %p')
+            )
+            
+            if success:
+                flash('✅ Test email sent via Brevo! Check your inbox.')
+            else:
+                flash('❌ Failed to send test email via Brevo.')
+        else:
+            # Log test notification
+            logger.info(f"Test email would be sent to {current_user.email} (Brevo not configured)")
+            flash('⚠️ Brevo not configured. Set BREVO_API_KEY environment variable.')
+            
+        return redirect(url_for('dashboard'))
         
     except Exception as e:
-        logger.error(f"❌ Test email error: {e}")
-        flash(f'❌ Error sending test email: {str(e)}')
-    
-    return redirect(url_for('dashboard'))
+        logger.error(f"Test email error: {e}")
+        flash(f'Error: {str(e)}')
+        return redirect(url_for('dashboard'))
 
-@app.route('/debug_info')
+@app.route('/email_status')
 @login_required
-def debug_info():
-    """Debug page to check system status"""
-    medicines = Medicine.query.filter_by(user_id=current_user.id).all()
-    
-    debug_info = []
-    for medicine in medicines:
-        debug_info.append({
-            'name': medicine.name,
-            'time': medicine.time.strftime('%H:%M:%S'),
-            'display_time': medicine.time.strftime('%I:%M %p'),
-            'days': medicine.days,
-            'status': medicine.status,
-            'last_notified': medicine.last_notified.strftime('%H:%M:%S') if medicine.last_notified else 'Never'
-        })
-    
-    # Current time info
-    now_utc = datetime.utcnow()
-    now_ph = now_utc + timedelta(hours=8)
-    
-    return jsonify({
+def email_status():
+    """Check email configuration status"""
+    status = {
+        'brevo_configured': bool(BREVO_API_KEY),
+        'sender_email': BREVO_SENDER_EMAIL,
+        'sender_name': BREVO_SENDER_NAME,
         'user_email': current_user.email,
-        'current_utc': now_utc.strftime('%H:%M:%S'),
-        'current_ph': now_ph.strftime('%I:%M %p'),
-        'ph_day': now_ph.strftime('%a'),
-        'medicines': debug_info,
-        'email_config': {
-            'server': app.config['MAIL_SERVER'],
-            'port': app.config['MAIL_PORT'],
-            'username': app.config['MAIL_USERNAME'],
-            'sender': app.config['MAIL_DEFAULT_SENDER']
-        }
-    })
+        'status': 'ready' if BREVO_API_KEY else 'not_configured'
+    }
+    return jsonify(status)
+
+@app.route('/add_test_medicine')
+@login_required
+def add_test_medicine():
+    """Add a test medicine for 1 minute from now"""
+    try:
+        now_utc = datetime.utcnow()
+        now_ph = now_utc + timedelta(hours=8)
+        
+        # Add medicine for 1 minute from now
+        future_time = (now_ph + timedelta(minutes=1)).time()
+        current_day = now_ph.strftime('%a')
+        
+        medicine = Medicine(
+            name='Test Medicine',
+            dosage='1 tablet',
+            time=future_time,
+            days=current_day,
+            user_id=current_user.id
+        )
+        
+        db.session.add(medicine)
+        db.session.commit()
+        
+        flash(f'✅ Test medicine added for {future_time.strftime("%I:%M %p")} (in 1 minute)')
+        return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Test medicine error: {e}")
+        flash('Error adding test medicine')
+        return redirect(url_for('dashboard'))
 
 @app.route('/logout')
 @login_required
@@ -455,19 +590,34 @@ def health_check():
     """Health check for Render"""
     try:
         db.session.execute('SELECT 1')
-        return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()}), 200
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'service': 'medicine-reminder',
+            'version': '1.0',
+            'brevo': 'configured' if BREVO_API_KEY else 'not_configured'
+        }), 200
     except Exception as e:
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 # Initialize scheduler
-scheduler = BackgroundScheduler()
-# Check every minute at :00 seconds
-scheduler.add_job(func=check_due_medicines, trigger='interval', minutes=1, id='check_medicines')
-scheduler.start()
-logger.info("✅ Scheduler started - checking medicines every minute")
+try:
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=check_due_medicines,
+        trigger='interval',
+        minutes=1,
+        id='medicine_checker',
+        max_instances=1,
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("✅ Scheduler started successfully - checking every minute")
+except Exception as e:
+    logger.error(f"❌ Failed to start scheduler: {e}")
 
 # Shutdown scheduler on exit
-atexit.register(lambda: scheduler.shutdown())
+atexit.register(lambda: scheduler.shutdown() if 'scheduler' in locals() else None)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

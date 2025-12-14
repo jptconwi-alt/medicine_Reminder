@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Medicine Reminder{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Your Medicine Schedule</h2>
+    <a href="{{ url_for('add_medicine') }}" class="btn btn-success">
+        + Add Medicine
+    </a>
+</div>
+
+<div class="row">
+    {% if medicines %}
+        {% for medicine in medicines %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card medicine-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title">{{ medicine.name }}</h5>
+                        <span class="badge bg-{{ 'success' if medicine.status == 'taken' else 'warning' if medicine.status == 'missed' else 'info' }}">
+                            {{ medicine.status }}
+                        </span>
+                    </div>
+                    <p class="card-text">
+                        <strong>Dosage:</strong> {{ medicine.dosage or 'Not specified' }}<br>
+                        <strong>Time:</strong> {{ medicine.time.strftime('%I:%M %p') }}<br>
+                        <strong>Days:</strong> {{ medicine.days.replace(',', ', ') }}
+                    </p>
+                    
+                    <div class="btn-group w-100" role="group">
+                        <button class="btn btn-sm btn-outline-success status-btn" 
+                                data-id="{{ medicine.id }}" 
+                                data-status="taken">
+                            ✓ Taken
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning status-btn" 
+                                data-id="{{ medicine.id }}" 
+                                data-status="missed">
+                            ✗ Missed
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                data-id="{{ medicine.id }}">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info">
+                No medicines added yet. <a href="{{ url_for('add_medicine') }}">Add your first medicine</a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Update status
+    document.querySelectorAll('.status-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const medicineId = this.dataset.id;
+            const status = this.dataset.status;
+            
+            fetch(`/update_status/${medicineId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: status })
+            })
+            .then(response => response.json())
+            .then(data => {
+                location.reload();
+            });
+        });
+    });
+    
+    // Delete medicine
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (confirm('Are you sure you want to delete this medicine?')) {
+                const medicineId = this.dataset.id;
+                
+                fetch(`/delete_medicine/${medicineId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    location.reload();
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

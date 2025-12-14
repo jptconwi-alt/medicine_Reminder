@@ -53,11 +53,11 @@ class User(UserMixin, db.Model):
     medicines = db.relationship('Medicine', backref='user', lazy=True, cascade='all, delete-orphan')
 
 class Medicine(db.Model):
-    __tablename__ = 'medicines'
+    __tablename__ = 'medicine_logs'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     dosage = db.Column(db.String(50))
-    time = db.Column(db.Time, nullable=False)  # This should exist
+    time = db.Column(db.Time, nullable=False)
     days = db.Column(db.String(100))
     status = db.Column(db.String(20), default='pending')
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)

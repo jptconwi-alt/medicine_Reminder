@@ -71,42 +71,25 @@ def load_user(user_id):
 def init_db():
     with app.app_context():
         try:
-            # Create tables if they don't exist
-            db.create_all()
-            logger.info("✅ Database tables checked/created successfully")
-            
-            # Add missing columns without dropping tables
             from sqlalchemy import inspect, text
-            
             inspector = inspect(db.engine)
-            columns = [col['name'] for col in inspector.get_columns('medicines')]
             
-            # Define required columns with their types
-            required_columns = {
-                'name': 'VARCHAR(100)',
-                'dosage': 'VARCHAR(50)',
-                'time': 'TIME',
-                'days': 'VARCHAR(100)',
-                'status': 'VARCHAR(20)',
-                'user_id': 'INTEGER',
-                'created_at': 'TIMESTAMP',
-                'last_notified': 'TIMESTAMP'
-            }
-            
-            for column_name, column_type in required_columns.items():
-                if column_name not in columns:
-                    try:
-                        logger.info(f"Adding missing column '{column_name}'...")
-                        db.session.execute(text(f"""
-                            ALTER TABLE medicines 
-                            ADD COLUMN {column_name} {column_type}
-                        """))
-                        db.session.commit()
-                        logger.info(f"✅ Added column '{column_name}'")
-                    except Exception as e:
-                        logger.error(f"Error adding column {column_name}: {e}")
-                        db.session.rollback()
-                        
+            # Check if medicines table exists
+            if 'medicines' not in inspector.get_table_names():
+                logger.info("Medicines table does not exist, creating...")
+                
+                # If medicine_logs table exists, drop it
+                if 'medicine_logs' in inspector.get_table_names():
+                    logger.info("Dropping old medicine_logs table...")
+                    db.session.execute(text('DROP TABLE medicine_logs CASCADE'))
+                    db.session.commit()
+                
+                # Create all tables (this will create medicines and users if they don't exist)
+                db.create_all()
+                logger.info("✅ Database tables created successfully")
+            else:
+                logger.info("✅ Medicines table already exists")
+                
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}")
 

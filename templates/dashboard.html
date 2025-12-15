@@ -83,23 +83,28 @@
                         <small class="text-muted">Stored UTC: {{ medicine.stored_utc_time }}</small>
                     </div>
                     
-                    <div class="btn-group w-100" role="group">
-                        <button class="btn btn-sm btn-outline-success status-btn" 
-                                data-id="{{ medicine.id }}" 
-                                data-status="taken">
-                            <i class="bi bi-check-circle"></i> Taken
-                        </button>
-                        <button class="btn btn-sm btn-outline-warning status-btn" 
-                                data-id="{{ medicine.id }}" 
-                                data-status="missed">
-                            <i class="bi bi-x-circle"></i> Missed
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger delete-btn" 
-                                data-id="{{ medicine.id }}"
-                                onclick="return confirm('Are you sure you want to delete this medicine?')">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
+                    <!-- Replace the current button group section with this: -->
+<div class="btn-group w-100" role="group">
+    <button class="btn btn-sm btn-outline-success status-btn" 
+            data-id="{{ medicine.id }}" 
+            data-status="taken">
+        <i class="bi bi-check-circle"></i> Taken
+    </button>
+    <button class="btn btn-sm btn-outline-warning status-btn" 
+            data-id="{{ medicine.id }}" 
+            data-status="missed">
+        <i class="bi bi-x-circle"></i> Missed
+    </button>
+    <!-- Add Edit Button -->
+    <a href="{{ url_for('edit_medicine', medicine_id=medicine.id) }}" 
+       class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-pencil"></i> Edit
+    </a>
+    <button class="btn btn-sm btn-outline-danger delete-btn" 
+            data-id="{{ medicine.id }}">
+        <i class="bi bi-trash"></i>
+    </button>
+</div>
                 </div>
             </div>
         </div>

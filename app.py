@@ -622,3 +622,65 @@ atexit.register(lambda: scheduler.shutdown() if 'scheduler' in locals() else Non
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+
+
+
+# Add this route in app.py after the add_medicine route
+
+@app.route('/edit_medicine/<int:medicine_id>', methods=['GET', 'POST'])
+@login_required
+def edit_medicine(medicine_id):
+    days_of_week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    
+    # Get the medicine to edit
+    medicine = Medicine.query.get_or_404(medicine_id)
+    
+    # Ensure the medicine belongs to the current user
+    if medicine.user_id != current_user.id:
+        flash('Unauthorized access')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        name = request.form.get('name')
+        dosage = request.form.get('dosage')
+        time_str = request.form.get('time')
+        days = request.form.getlist('days')
+        
+        if not name or not time_str or not days:
+            flash('Please fill in all required fields')
+            return render_template('edit_medicine.html', 
+                                 medicine=medicine, 
+                                 days=days_of_week)
+        
+        try:
+            # Update the medicine
+            medicine.name = name
+            medicine.dosage = dosage
+            
+            # Parse time (user enters in 24-hour format)
+            time_obj = datetime.strptime(time_str, '%H:%M').time()
+            medicine.time = time_obj
+            
+            medicine.days = ','.join(days)
+            medicine.status = 'pending'  # Reset status when edited
+            
+            db.session.commit()
+            
+            display_time = time_obj.strftime('%I:%M %p')
+            flash(f'✅ Medicine "{name}" updated for {display_time} Philippine Time!')
+            logger.info(f"User {current_user.email} updated medicine: {name} at {display_time}")
+            return redirect(url_for('dashboard'))
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Edit medicine error: {e}")
+            flash('Error updating medicine. Please try again.')
+            return render_template('edit_medicine.html', 
+                                 medicine=medicine, 
+                                 days=days_of_week)
+    
+    # For GET request, show the edit form with current values
+    return render_template('edit_medicine.html', 
+                         medicine=medicine, 
+                         days=days_of_week)

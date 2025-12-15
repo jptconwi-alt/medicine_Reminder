@@ -17,12 +17,12 @@
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('dashboard') }}">💊 Medicine Reminder</a>
             {% if current_user.is_authenticated %}
-            <div class="navbar-nav ms-auto">
+            <!-- <div class="navbar-nav ms-auto">
                 <span class="nav-item nav-link">Welcome, {{ current_user.email }}</span>
                 <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
             </div>
             {% endif %}
-        </div>
+        </div> -->
     </nav>
 
 
@@ -55,6 +55,7 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
+
 
 
 

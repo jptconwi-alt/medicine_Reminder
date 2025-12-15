@@ -2,9 +2,65 @@
 {% block title %}Dashboard - Medicine Reminder{% endblock %}
 
 {% block content %}
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+        <!-- Brand with icon and text -->
+        <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('dashboard') }}">
+            <div class="nav-brand-icon">
+                <i class="bi bi-capsule-pill"></i>
+            </div>
+            <div class="d-flex flex-column">
+                <span class="brand-main">MediTrack</span>
+                <span class="brand-sub">Medicine Reminder</span>
+            </div>
+        </a>
+
+        <!-- Mobile Toggle Button -->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- Navigation Items -->
+        <div class="collapse navbar-collapse" id="navbarNav">
+            {% if current_user.is_authenticated %}
+            <div class="navbar-nav ms-lg-auto align-items-center gap-3">
+                <!-- User Info with Avatar -->
+                <div class="nav-user-info d-flex align-items-center gap-2 px-3 py-2">
+                    <div class="user-avatar">
+                        {{ current_user.email[0]|upper }}
+                    </div>
+                    <div class="d-flex flex-column">
+                        <span class="user-name">Welcome, {{ current_user.email.split('@')[0]|title }}</span>
+                        <span class="user-email">{{ current_user.email }}</span>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions Menu -->
+                <div class="nav-actions d-flex gap-2">
+                    <a class="nav-action-btn" href="{{ url_for('add_medicine') }}" data-bs-toggle="tooltip" title="Add Medicine">
+                        <i class="bi bi-plus-circle"></i>
+                        <span class="action-label">Add</span>
+                    </a>
+                    <a class="nav-action-btn" href="{{ url_for('dashboard') }}" data-bs-toggle="tooltip" title="Dashboard">
+                        <i class="bi bi-speedometer2"></i>
+                        <span class="action-label">Dashboard</span>
+                    </a>
+                </div>
+                
+                <!-- Logout Button -->
+                <a class="btn-logout d-flex align-items-center gap-2" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span>Logout</span>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
 <div class="dashboard-header mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Welcome back, {{ current_user.email.split('@')[0] }}!</h2>
+        <!-- <h2>Welcome back, {{ current_user.email.split('@')[0] }}!</h2> -->
         <div class="text-end">
             <small class="text-muted">Current PH Time: {{ current_ph_time }} ({{ current_ph_day }})</small>
         </div>
